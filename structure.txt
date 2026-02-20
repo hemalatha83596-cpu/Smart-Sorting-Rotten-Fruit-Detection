@@ -1,0 +1,7 @@
+dataset/
+├── train/
+│   ├── fresh/
+│   └── rotten/
+└── test/
+    ├── fresh/
+    └── rotten/

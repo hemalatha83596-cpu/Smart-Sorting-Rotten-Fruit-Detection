@@ -1,0 +1,120 @@
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
+from tensorflow.keras.optimizers import Adam
+img_size = 224
+batch_size = 32
+
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    rotation_range=20,
+    zoom_range=0.2,
+    horizontal_flip=True
+)
+
+test_datagen = ImageDataGenerator(rescale=1./255)
+
+train_data = train_datagen.flow_from_directory(
+    "dataset/train",
+    target_size=(img_size, img_size),
+    batch_size=batch_size,
+    class_mode='binary'
+)
+
+test_data = test_datagen.flow_from_directory(
+    "dataset/test",
+    target_size=(img_size, img_size),
+    batch_size=batch_size,
+    class_mode='binary'
+)
+
+
+base_model = MobileNetV2(
+    weights='imagenet',
+    include_top=False,
+    input_shape=(224, 224, 3)
+)
+
+base_model.trainable = False
+
+model = Sequential([
+    base_model,
+    GlobalAveragePooling2D(),
+    Dense(128, activation='relu'),
+    Dropout(0.5),
+    Dense(1, activation='sigmoid')
+])
+
+model.compile(
+    optimizer=Adam(learning_rate=0.0001),
+    loss='binary_crossentropy',
+    metrics=['accuracy']
+)
+
+model.summary()
+
+history = model.fit(
+    train_data,
+    epochs=10,
+    validation_data=test_data
+)
+
+model.save("rotten_fruit_model.h5")
+
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.models import load_model
+
+model = load_model("rotten_fruit_model.h5")
+
+img = image.load_img("sample.jpg", target_size=(224,224))
+img = image.img_to_array(img)
+img = np.expand_dims(img, axis=0)
+img = img / 255.0
+
+prediction = model.predict(img)
+
+if prediction[0][0] > 0.5:
+    print("Fresh Fruit/Vegetable")
+else:
+    print("Rotten Fruit/Vegetable")
+
+
+from flask import Flask, render_template, request
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing import image
+import numpy as np
+import os
+
+app = Flask(__name__)
+model = load_model("rotten_fruit_model.h5")
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    file = request.files['file']
+    file_path = os.path.join("static", file.filename)
+    file.save(file_path)
+
+    img = image.load_img(file_path, target_size=(224,224))
+    img = image.img_to_array(img)
+    img = np.expand_dims(img, axis=0)
+    img = img / 255.0
+
+    result = model.predict(img)
+
+    if result[0][0] > 0.5:
+        output = "Fresh"
+    else:
+        output = "Rotten"
+
+    return render_template('index.html', prediction=output)
+
+if __name__ == "__main__":
+    app.run(debug=True)
